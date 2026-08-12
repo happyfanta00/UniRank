@@ -143,6 +143,34 @@ RankMixer_KuaiRand_Video_Action_Ablation_NumLayers_Large:
     <<: *rankmixer_kuairand_scaling_base
     num_layers: 6
 
+# Baseline-noise probe: five runs of RankMixer_KuaiRand_Video_Action that differ in
+# nothing but `seed`. They exist to measure the run-to-run standard deviation of the
+# test metrics (see run_probe.sh), which is the reference an automated evaluation loop
+# needs before it can call any single-run difference an improvement.
+#
+# Deliberately plain `<<:` + `seed:` blocks rather than a generated config: the point of
+# the measurement is that a probe run is indistinguishable from an ordinary baseline run,
+# so it has to come from this file, through the same loader, with the same defaults.
+RankMixer_KuaiRand_Video_Action_NoiseProbe_s11:
+    <<: *rankmixer_kuairand_scaling_base
+    seed: 11
+
+RankMixer_KuaiRand_Video_Action_NoiseProbe_s12:
+    <<: *rankmixer_kuairand_scaling_base
+    seed: 12
+
+RankMixer_KuaiRand_Video_Action_NoiseProbe_s13:
+    <<: *rankmixer_kuairand_scaling_base
+    seed: 13
+
+RankMixer_KuaiRand_Video_Action_NoiseProbe_s14:
+    <<: *rankmixer_kuairand_scaling_base
+    seed: 14
+
+RankMixer_KuaiRand_Video_Action_NoiseProbe_s15:
+    <<: *rankmixer_kuairand_scaling_base
+    seed: 15
+
 RankMixer_KuaiRand_Video_Action_Tokenizer_Auto:
     <<: *rankmixer_kuairand_scaling_base
     tokenizer_type: Auto
