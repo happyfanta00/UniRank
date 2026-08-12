@@ -47,17 +47,17 @@ QK_Video_Action:
             - {name: share, dtype: float}
 
 KuaiRand_Video_Action:
-    data_root: /mnt/ceph-nj1-csp/bingoozhang/salmonli/data
+    data_root: /home/ec2-user/efs_data/workspace/UniRank/dataset/
     data_format: parquet
-    train_data: /mnt/ceph-nj1-csp/bingoozhang/salmonli/data/KuaiRand_Video_Action/train/data
-    valid_data: /mnt/ceph-nj1-csp/bingoozhang/salmonli/data/KuaiRand_Video_Action/valid/data
-    test_data: /mnt/ceph-nj1-csp/bingoozhang/salmonli/data/KuaiRand_Video_Action/test/data
-    train_user_info: /mnt/ceph-nj1-csp/bingoozhang/salmonli/data/KuaiRand_Video_Action/train/user_info
-    train_item_info: /mnt/ceph-nj1-csp/bingoozhang/salmonli/data/KuaiRand_Video_Action/train/item_info
-    valid_user_info: /mnt/ceph-nj1-csp/bingoozhang/salmonli/data/KuaiRand_Video_Action/valid/user_info
-    valid_item_info: /mnt/ceph-nj1-csp/bingoozhang/salmonli/data/KuaiRand_Video_Action/valid/item_info
-    test_user_info: /mnt/ceph-nj1-csp/bingoozhang/salmonli/data/KuaiRand_Video_Action/test/user_info
-    test_item_info: /mnt/ceph-nj1-csp/bingoozhang/salmonli/data/KuaiRand_Video_Action/test/item_info
+    train_data: /home/ec2-user/efs_data/workspace/UniRank/dataset/KuaiRand_Video_Action/train/data
+    valid_data: /home/ec2-user/efs_data/workspace/UniRank/dataset/KuaiRand_Video_Action/valid/data
+    test_data: /home/ec2-user/efs_data/workspace/UniRank/dataset/KuaiRand_Video_Action/test/data
+    train_user_info: /home/ec2-user/efs_data/workspace/UniRank/dataset/KuaiRand_Video_Action/train/user_info
+    train_item_info: /home/ec2-user/efs_data/workspace/UniRank/dataset/KuaiRand_Video_Action/train/item_info
+    valid_user_info: /home/ec2-user/efs_data/workspace/UniRank/dataset/KuaiRand_Video_Action/valid/user_info
+    valid_item_info: /home/ec2-user/efs_data/workspace/UniRank/dataset/KuaiRand_Video_Action/valid/item_info
+    test_user_info: /home/ec2-user/efs_data/workspace/UniRank/dataset/KuaiRand_Video_Action/test/user_info
+    test_item_info: /home/ec2-user/efs_data/workspace/UniRank/dataset/KuaiRand_Video_Action/test/item_info
     rebuild_dataset: False
     blocked: True
     block_cache_size: 2
