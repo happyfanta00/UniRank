@@ -29,6 +29,7 @@ import os, sys
 import logging
 from unirank.metrics import evaluate_metrics
 from unirank.pytorch.torch_utils import get_device, get_optimizer, get_loss
+from unirank.pytorch import observables as mr_observables
 from unirank.utils import Monitor, not_in_whitelist
 from tqdm import tqdm
 from contextlib import nullcontext
@@ -426,6 +427,7 @@ class BaseModel(nn.Module):
         self._stopping_steps = 0
         self._steps_per_epoch = len(data_generator)
         self._stop_training = False
+        self._mr_short_run = False
         self._total_steps = 0
         self._batch_index = 0
         self._epoch_index = 0
@@ -505,6 +507,16 @@ class BaseModel(nn.Module):
                     logging.info("************ Epoch={} end ************".format(self._epoch_index + 1))
                     if epoch + 1 < epochs:
                         logging.info("************ Epoch={} start ************".format(self._epoch_index + 2))
+
+        # Short-run mode stops before any epoch-end evaluation, so
+        # checkpoint_and_earlystop never ran and no checkpoint file exists. Return
+        # here instead of failing in load_weights on a missing path. All ranks stop
+        # at the same step, so all ranks return together.
+        if getattr(self, "_mr_short_run", False):
+            if self._is_main_process():
+                logging.info("[MR] short run finished; no checkpoint was written, "
+                             "skipping best-model reload")
+            return
 
         if self._is_main_process():
             logging.info("Training finished.")
@@ -597,6 +609,9 @@ class BaseModel(nn.Module):
         self.train()
         self._optimizer_zero_grad()
 
+        # 0 unless MR_MAX_STEPS is set; see unirank/pytorch/observables.py
+        _mr_max_steps = mr_observables.max_steps()
+
         # Each rank can display tqdm
         use_tqdm = (self._verbose > 0)
         if use_tqdm:
@@ -652,6 +667,18 @@ class BaseModel(nn.Module):
                     self._sync_lr_from_main()
 
             if self._stop_training:
+                break
+
+            # Optional short-run mode (off unless MR_MAX_STEPS is set): stop after a
+            # fixed number of optimizer steps. Reuses _stop_training rather than a
+            # bare break so that the existing early-stop path is taken -- under DDP
+            # every rank stops at the same step count and the epoch-end collective
+            # is skipped on all of them together.
+            if _mr_max_steps and self._total_steps >= _mr_max_steps:
+                self._mr_short_run = True
+                self._stop_training = True
+                if self._is_main_process():
+                    logging.info("[MR] short run: stopping at step {}".format(self._total_steps))
                 break
 
         # ---- flush residual gradient ----
