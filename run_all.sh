@@ -21,10 +21,10 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 # Use 4 GPUs
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+export CUDA_VISIBLE_DEVICES=0,1
 
 CONFIG_DIR="./config"
-NPROC=4
+NPROC=2
 
 # Allocate different ports for each torchrun to avoid residual port conflicts
 BASE_PORT=29500
@@ -234,7 +234,7 @@ exec > >(tee -a "${MASTER_LOG}") 2>&1
 #run_exp "RankMixer_KuaiRand_Video_Action_Ablation_MaxLen_Large"
 
 #run_exp "RankMixer_KuaiRand_Video_Action_Ablation_NumLayers_Mid"
-#run_exp "RankMixer_KuaiRand_Video_Action_Ablation_NumLayers_Large"
+run_exp "RankMixer_KuaiRand_Video_Action_Ablation_NumLayers_Large"
 
 # ==================================================
 # OneTrans single-axis scaling ablations on KuaiRand
@@ -253,7 +253,7 @@ exec > >(tee -a "${MASTER_LOG}") 2>&1
 
 #run_exp "OneTrans_KuaiRand_Video_Action_Ablation_NumLayers_Small"
 #run_exp "OneTrans_KuaiRand_Video_Action_Ablation_NumLayers_Mid"
-run_exp "OneTrans_KuaiRand_Video_Action_Ablation_NumLayers_Large"
+# run_exp "OneTrans_KuaiRand_Video_Action_Ablation_NumLayers_Large"
 
 # ==================================================
 # TencentGR_10M_Action experiments

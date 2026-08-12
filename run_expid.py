@@ -43,6 +43,7 @@ from unirank.pytorch.torch_utils import (
     setup_visible_devices,
 )
 from unirank.preprocess import FeatureProcessor, build_dataset
+from unirank.pytorch import observables as mr_observables
 import model_zoo
 
 
@@ -204,7 +205,15 @@ if __name__ == '__main__':
         del train_gen, valid_gen
         gc.collect()
 
-        if params.get("test_data", None):
+        # A short run (MR_MAX_STEPS, see unirank/pytorch/observables.py) trains a few
+        # hundred steps to compare loss curves; evaluating it would take longer than
+        # the run itself and would emit a full set of metric lines for a model that
+        # saw 2% of the data -- numbers that look like results but are not.
+        mr_short_run = mr_observables.max_steps() > 0
+        if mr_short_run and is_main_process(rank):
+            logging.info('[MR] short run: skipping test evaluation')
+
+        if params.get("test_data", None) and not mr_short_run:
             if is_main_process(rank):
                 logging.info('******** Test evaluation ********')
 
