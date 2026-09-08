@@ -2,19 +2,18 @@
   <img src="./assets/figures/unirank_logo.png" alt="UniRank logo" width="720">
 </p>
 
-# UniRank: Benchmarking Ranking Models for Unified Sequential Modeling and Feature Interaction <sub>[v0.7.2](https://github.com/salmon1802/UniRank/tree/v0.7.2)</sub>
+# UniRank: A Framework for Unified Sequential Modeling and Feature Interaction
 
-UniRank is an open PyTorch benchmark for unified sequential modeling and feature interaction in large-scale recommendation ranking. It standardizes chronological point-wise autoregressive supervision, multi-feedback evaluation, model implementations, data processing, and distributed training in one reproducible pipeline.
+UniRank is an open PyTorch benchmark for unified sequential modeling and feature interaction in large-scale recommendation ranking. It standardizes chronological point-wise autoregressive supervision, multi-feedback evaluation, data processing, and distributed training in one reproducible pipeline.
 
-The benchmark contains fifteen unified ranking architectures and five industrial datasets from short-video, advertising, and e-commerce scenarios. Their sequence lengths span roughly `10^2` to `10^5`. The toolkit supports blocked Parquet loading, DDP, operator compilation, mixed precision, optimized attention, and activation checkpointing so that accuracy and efficiency can be compared under the same protocol.
+The framework ships one unified ranking architecture and five industrial datasets from short-video, advertising, and e-commerce scenarios. Their sequence lengths span roughly `10^2` to `10^5`. The toolkit supports blocked Parquet loading, DDP, operator compilation, mixed precision, optimized attention, and activation checkpointing so that accuracy and efficiency can be measured under one protocol.
 
 ## Why UniRank?
 
-Modern ranking research is moving from isolated sequence pooling and feature-cross modules toward unified architectures that allow behavioral tokens, target items, and non-sequential fields to interact in a shared representation space. Comparing these models is difficult because published systems often use different datasets, split rules, sequence definitions, label semantics, and training infrastructure.
+Modern ranking research is moving from isolated sequence pooling and feature-cross modules toward unified architectures that allow behavioral tokens, target items, and non-sequential fields to interact in a shared representation space. Results in this area are hard to compare because published systems often use different datasets, split rules, sequence definitions, label semantics, and training infrastructure.
 
 UniRank is designed to make the following questions measurable under a common protocol:
 
-- Which architecture performs best when the data split, features, sequence length, tasks, and metrics are fixed?
 - Should sequence modeling happen before feature interaction, or should both happen layer by layer?
 - How do model conclusions change across click, engagement, cart, and conversion objectives?
 - How do model size, token dimension, and history length affect accuracy, memory, and throughput?
@@ -24,132 +23,13 @@ The goal is not to hide dataset-specific semantics. UniRank makes those choices 
 
 The project makes three main contributions:
 
-- **An open unified-ranking benchmark:** fifteen recent architectures are evaluated on five large industrial datasets under a common chronological, multi-feedback protocol.
+- **An open unified-ranking pipeline:** one architecture is evaluated on five large industrial datasets under a common chronological, multi-feedback protocol.
 - **A practical large-scale toolkit:** DDP, compilation, mixed precision, optimized attention, activation checkpointing, and blocked loading reduce the systems barrier to reproducing large ranking models.
-- **A reproducible empirical study:** the repository releases preprocessing code, configurations, model implementations, evaluation code, and benchmark results for analyzing model--data and model--task affinity.
+- **A reproducible empirical study:** the repository releases preprocessing code, configurations, model implementations, and evaluation code for analyzing model--data and model--task affinity.
 
 ## Models
 
-The following implementations are exported by `model_zoo/__init__.py`:
-
-<table>
-  <thead>
-    <tr>
-      <th width="5%" align="center">No.</th>
-      <th width="11%" align="center">Publication</th>
-      <th width="13%">Model</th>
-      <th width="27%">Affiliation</th>
-      <th width="44%">Paper</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td align="center">1</td>
-      <td align="center">arXiv'23</td>
-      <td><a href="./model_zoo/HiFormer.py">HiFormer</a></td>
-      <td><img src="https://cdn.simpleicons.org/google/4285F4" alt="Google" height="18"> Google</td>
-      <td><a href="https://arxiv.org/pdf/2311.05884">HiFormer: Heterogeneous Feature Interactions Learning with Transformers for Recommender Systems</a></td>
-    </tr>
-    <tr>
-      <td align="center">2</td>
-      <td align="center">CIKM'25</td>
-      <td><a href="./model_zoo/RankMixer.py">RankMixer</a></td>
-      <td><img src="https://cdn.simpleicons.org/bytedance/3C8CFF" alt="ByteDance" height="18"> ByteDance</td>
-      <td><a href="https://arxiv.org/abs/2507.15551">RankMixer: Scaling Up Ranking Models in Industrial Recommenders</a></td>
-    </tr>
-    <tr>
-      <td align="center">3</td>
-      <td align="center">arXiv'25</td>
-      <td><a href="./model_zoo/INFNet.py">INFNet</a></td>
-      <td><img src="https://cdn.simpleicons.org/kuaishou/FF4906" alt="Kuaishou" height="18"> Kuaishou</td>
-      <td><a href="https://arxiv.org/pdf/2508.11565v1">INFNet: A Task-aware Information Flow Network for Large-Scale Recommendation Systems</a></td>
-    </tr>
-    <tr>
-      <td align="center">4</td>
-      <td align="center">RecSys'25</td>
-      <td><a href="./model_zoo/LONGER.py">LONGER</a></td>
-      <td><img src="https://cdn.simpleicons.org/bytedance/3C8CFF" alt="ByteDance" height="18"> ByteDance</td>
-      <td><a href="https://arxiv.org/abs/2505.04421">LONGER: Scaling Up Long Sequence Modeling in Industrial Recommenders</a></td>
-    </tr>
-    <tr>
-      <td align="center">5</td>
-      <td align="center">WWW'26</td>
-      <td><a href="./model_zoo/OneTrans.py">OneTrans</a></td>
-      <td><img src="https://www.google.com/s2/favicons?domain=ntu.edu.sg&amp;sz=64" alt="NTU" height="18"> NTU<br><img src="https://cdn.simpleicons.org/bytedance/3C8CFF" alt="ByteDance" height="18"> ByteDance</td>
-      <td><a href="https://arxiv.org/abs/2510.26104">OneTrans: Unified Feature Interaction and Sequence Modeling with One Transformer in Industrial Recommender</a></td>
-    </tr>
-    <tr>
-      <td align="center">6</td>
-      <td align="center">arXiv'26</td>
-      <td><a href="./model_zoo/Zenith.py">Zenith</a></td>
-      <td><img src="https://www.google.com/s2/favicons?domain=ncsu.edu&amp;sz=64" alt="NCSU" height="18"> NCSU<br><img src="https://cdn.simpleicons.org/tiktok/000000/FFFFFF" alt="TikTok" height="18"> TikTok<br><img src="https://cdn.simpleicons.org/bytedance/3C8CFF" alt="ByteDance" height="18"> ByteDance</td>
-      <td><a href="https://arxiv.org/pdf/2601.21285">Zenith: Scaling up Ranking Models for Billion-scale Livestreaming Recommendation</a></td>
-    </tr>
-    <tr>
-      <td align="center">7</td>
-      <td align="center">SIGIR'26</td>
-      <td><a href="./model_zoo/HyFormer.py">HyFormer</a></td>
-      <td><img src="https://cdn.simpleicons.org/bytedance/3C8CFF" alt="ByteDance" height="18"> ByteDance</td>
-      <td><a href="https://arxiv.org/abs/2601.12681">HyFormer: Revisiting the Roles of Sequence Modeling and Feature Interaction in CTR Prediction</a></td>
-    </tr>
-    <tr>
-      <td align="center">8</td>
-      <td align="center">KDD'26</td>
-      <td><a href="./model_zoo/MixFormer.py">MixFormer</a></td>
-      <td><img src="https://cdn.simpleicons.org/bytedance/3C8CFF" alt="ByteDance" height="18"> ByteDance</td>
-      <td><a href="https://arxiv.org/abs/2602.14110">MixFormer: Co-Scaling Up Dense and Sequence in Industrial Recommenders</a></td>
-    </tr>
-    <tr>
-      <td align="center">9</td>
-      <td align="center">KDD'26</td>
-      <td><a href="./model_zoo/TokenMixer.py">TokenMixer</a></td>
-      <td><img src="https://cdn.simpleicons.org/bytedance/3C8CFF" alt="ByteDance" height="18"> ByteDance</td>
-      <td><a href="https://arxiv.org/pdf/2602.06563">TokenMixer-Large: Scaling Up Large Ranking Models in Industrial Recommenders</a></td>
-    </tr>
-    <tr>
-      <td align="center">10</td>
-      <td align="center">KDD'26</td>
-      <td><a href="./model_zoo/EST.py">EST</a></td>
-      <td><img src="https://cdn.simpleicons.org/alibabacloud/FF6A00" alt="Alibaba" height="18"> Alibaba</td>
-      <td><a href="https://arxiv.org/pdf/2602.10811">EST: Towards Efficient Scaling Laws in Click-Through Rate Prediction via Unified Modeling</a></td>
-    </tr>
-    <tr>
-      <td align="center">11</td>
-      <td align="center">arXiv'26</td>
-      <td><a href="./model_zoo/HeMix.py">HeMix</a></td>
-      <td><img src="https://cdn.simpleicons.org/alibabacloud/FF6A00" alt="Alibaba" height="18"> Alibaba</td>
-      <td><a href="https://arxiv.org/pdf/2602.09387">Query-Mixed Interest Extraction and Heterogeneous Interaction: A Scalable CTR Model for Industrial Recommender Systems</a></td>
-    </tr>
-    <tr>
-      <td align="center">12</td>
-      <td align="center">arXiv'26</td>
-      <td><a href="./model_zoo/UniMixer.py">UniMixer</a></td>
-      <td><img src="https://cdn.simpleicons.org/kuaishou/FF4906" alt="Kuaishou" height="18"> Kuaishou</td>
-      <td><a href="https://arxiv.org/pdf/2604.00590">UniMixer: A Unified Architecture for Scaling Laws in Recommendation Systems</a></td>
-    </tr>
-    <tr>
-      <td align="center">13</td>
-      <td align="center">arXiv'26</td>
-      <td><a href="./model_zoo/TokenFormer.py">TokenFormer</a></td>
-      <td><img src="https://www.google.com/s2/favicons?domain=tencent.com&amp;sz=64" alt="Tencent" height="18"> Tencent</td>
-      <td><a href="https://arxiv.org/abs/2604.13737">TokenFormer: Unify the Multi-Field and Sequential Recommendation Worlds</a></td>
-    </tr>
-    <tr>
-      <td align="center">14</td>
-      <td align="center">arXiv'26</td>
-      <td><a href="./model_zoo/UltraHSTU.py">UltraHSTU</a></td>
-      <td><img src="https://cdn.simpleicons.org/meta/0866FF" alt="Meta" height="18"> Meta</td>
-      <td><a href="https://arxiv.org/pdf/2602.16986">Bending the Scaling Law Curve in Large-Scale Recommendation Systems</a></td>
-    </tr>
-    <tr>
-      <td align="center">15</td>
-      <td align="center">SIGIR'26</td>
-      <td><a href="./model_zoo/SSR.py">SSR</a></td>
-      <td><img src="https://cdn.simpleicons.org/alibabacloud/FF6A00" alt="Alibaba" height="18"> Alibaba</td>
-      <td><a href="https://arxiv.org/pdf/2604.08011">Beyond Dense Connectivity: Explicit Sparsity for Scalable Recommendation</a></td>
-    </tr>
-  </tbody>
-</table>
+`model_zoo/RankMixer.py` implements the ranking architecture exported by `model_zoo/__init__.py`. It uses the shared feature-map and multi-task interfaces described below, so a model added later reuses the same training, evaluation and configuration paths without touching the framework.
 
 ## Training Paradigm
 
@@ -232,18 +112,13 @@ The main entry point is `run_expid.py`. Model and dataset selection is configura
 
 ## Architecture Design
 
-UniRank groups the registered architectures by how unified interaction is organized across the network:
+Unified interaction can be organized in two ways. **Stacked** designs arrange sequence modeling and feature interaction as consecutive modules: the sequence module first extracts a representation from the behavioral history, and its output is then combined with user, target-item and context features and processed by the following feature-interaction module. **Layer-wise** designs integrate both inside every layer, so behavioral sequences and non-sequential features are updated together throughout the network. The registered model is a stacked design.
 
-| Paradigm | Description | Models |
-|:--|:--|:--|
-| Stacked Unified Interaction | Sequence modeling and feature interaction are arranged as consecutive modules. The sequence modeling module first extracts representations from the behavioral history; its output is then combined with user, target-item, and context features and processed by the following feature interaction module. | HiFormer, RankMixer, Zenith, TokenMixer, UniMixer, HeMix, SSR |
-| Layer-wise Unified Interaction | Sequence modeling and feature interaction are integrated within each layer. Behavioral sequences and non-sequential features are processed together and updated layer by layer throughout the interaction network. | OneTrans, HyFormer, MixFormer, INFNet, EST, TokenFormer, LONGER, UltraHSTU |
-
-The distinction concerns how sequence modeling and feature interaction modules are organized rather than which operator they use. Stacked models place the two modules in sequence, whereas layer-wise models integrate both operations into each network layer. Transformer attention, target attention, MLP mixers, sparse interaction, and hybrid dense-sequential blocks remain model-specific; input semantics, tasks, splits, and evaluation stay aligned.
+The distinction concerns how the two modules are organized rather than which operator they use. Transformer attention, target attention, MLP mixers, sparse interaction and hybrid dense-sequential blocks are all model-specific choices; input semantics, tasks, splits and evaluation stay aligned regardless.
 
 ## Engineering Optimizations
 
-UniRank includes engineering support for model memory, computation, distributed execution, data access, and multi-task evaluation. These components are shared by the registered models so that architecture comparisons do not require separate training stacks.
+UniRank includes engineering support for model memory, computation, distributed execution, data access, and multi-task evaluation. These components live outside the model file, so a model implementation does not need to carry its own training stack.
 
 ### Memory efficiency
 
@@ -255,8 +130,7 @@ UniRank includes engineering support for model memory, computation, distributed 
 ### Training throughput
 
 - **`torch.compile` acceleration** uses the Inductor backend to compile trainable dense child modules while leaving sparse embedding modules outside the compiled region. This keeps the embedding path compatible with sparse optimization and lets supported interaction blocks benefit from graph and kernel optimization. It is controlled by `enable_torch_compile` and is enabled by default in the current framework.
-- **Flash Attention through SDPA** is available to models implemented with `torch.nn.functional.scaled_dot_product_attention`. When tensor dtype, shape, mask, and GPU capability satisfy PyTorch's backend constraints, SDPA can dispatch to a fused Flash Attention kernel instead of materializing the full attention matrix. OneTrans, HiFormer, LONGER, Zenith, MixFormer, HeMix, INFNet, EST, and HyFormer contain SDPA-based attention paths.
-- **Flex Attention** is used by TokenFormer and UltraHSTU for structured attention patterns that require model-specific masking. `create_block_mask` constructs the block mask and `flex_attention` applies it without replacing the model's masking semantics with a dense generic attention path.
+- **Flash Attention through SDPA** is available to models implemented with `torch.nn.functional.scaled_dot_product_attention`. When tensor dtype, shape, mask, and GPU capability satisfy PyTorch's backend constraints, SDPA can dispatch to a fused Flash Attention kernel instead of materializing the full attention matrix.
 - **Separate dense and sparse optimization** applies AdamW at `1e-4` to dense network parameters and Adagrad at `0.05` to sparse embedding parameters.
 - **Pinned-memory loading** and batched Parquet iteration overlap host-to-device transfer with model execution and avoid materializing the full training split in memory.
 - **Distributed data parallelism** uses one CUDA process per GPU and NCCL gradient synchronization. Validation and testing are also partitioned across ranks rather than being repeated entirely on rank 0.
@@ -288,7 +162,7 @@ UniRank/
 |   +-- Taobao/                   # Taobao preprocessing and statistics
 |   +-- MerRec/                   # MerRec download, preprocessing and statistics
 |   +-- dataset_stats_utils.py
-+-- model_zoo/                    # Fifteen registered ranking architectures
++-- model_zoo/                    # Registered ranking architecture
 +-- unirank/                      # Training, feature, metric and shared utilities
 |   +-- utils.py                  # Configuration, Parquet and DataFrame utilities
 |   +-- pytorch/
@@ -297,7 +171,6 @@ UniRank/
 |           +-- unirank_dataloader.py  # Blocked action-aware sequence loader
 |           +-- rank_dataloader.py     # Train/validation/test iterator builder
 +-- assets/figures/               # README and benchmark figures
-+-- benchmark/                    # Accuracy logs and engineering benchmark utilities
 +-- checkpoints/                  # Saved model checkpoints
 +-- run_expid.py                  # Single-experiment entry point
 +-- run_all.sh                    # Batch experiment launcher
@@ -451,7 +324,7 @@ The `Base` section provides shared defaults; each experiment overrides only the 
 4. Reuse `unirank/pytorch/dataloaders/unirank_dataloader.py` unless the architecture requires a genuinely different input contract.
 5. Add the experiment ID to `run_all.sh` and verify single-GPU and DDP execution.
 
-All current models expose their main interaction block through the shared activation-checkpoint helper, so new large models should do the same when practical.
+The registered model exposes its main interaction block through the shared activation-checkpoint helper, and a new large model should do the same when practical.
 
 ### Add a dataset
 
@@ -460,13 +333,13 @@ All current models expose their main interaction block through the shared activa
 3. Reserve categorical ID `0` for padding/unknown values and record vocabulary sizes.
 4. Write `meta_data.json` and, for blocked output, `block_manifest.json`.
 5. Add a dataset entry to `config/dataset_config.yaml` and a statistics script alongside the preprocessor.
-6. Add one nearby experiment configuration per model to keep cross-dataset comparisons organized.
+6. Add one nearby experiment configuration to keep cross-dataset comparisons organized.
 
 ## Reproducibility and Statistical Significance
 
-### Released benchmark protocol
+### Released run protocol
 
-- Each result in the paper and `benchmark/` comes from one independent run of the selected configuration with the fixed base seed `20262027`. Model-specific hyperparameters are searched under this same seed; the tables do not aggregate results across multiple seeds and therefore do not report standard deviations or confidence intervals. This controlled-budget convention follows [FuxiCTR](https://github.com/reczoo/FuxiCTR) and [BARS](https://github.com/reczoo/BARS/tree/main/ranking/ctr).
+- Each released result comes from one independent run of the selected configuration with the fixed base seed `20262027`. Hyperparameters are searched under this same seed; results are not aggregated across multiple seeds and therefore carry no standard deviations or confidence intervals. This controlled-budget convention follows [FuxiCTR](https://github.com/reczoo/FuxiCTR) and [BARS](https://github.com/reczoo/BARS/tree/main/ranking/ctr).
 - In DDP, `seed + rank` creates a separate RNG stream for each rank within one distributed run. It must not be interpreted as multiple independent runs.
 - The default `epochs: 1` is deliberate. CTR models commonly exhibit the [one-epoch phenomenon](https://arxiv.org/abs/2209.06053), reaching their best result during the first pass and degrading early in the second; one-pass training also reflects industrial streaming settings. Additional UniRank checks commonly observed lower AUC in the second epoch.
 - Exploratory multi-seed runs showed typical variation of about `0.001` absolute AUC, while overall rankings were generally stable. An improvement near `0.001` is a useful CTR-ranking heuristic, not proof of statistical significance. Smaller differences, especially around `1e-4`, should be interpreted cautiously, although they may still matter at production scale, as discussed in [FinalMLP](https://arxiv.org/abs/2304.00902).
@@ -480,7 +353,7 @@ All current models expose their main interaction block through the shared activa
 > 2. Rerun only the proposed model and that strongest baseline using the same set of multiple independent base seeds.
 > 3. Perform a two-tailed t-test on the per-seed results and report the p-value.
 
-This focused comparison avoids the unnecessary cost and multiple-comparison burden of rerunning every benchmark model with many seeds. See the detailed clarification in [Issue #11](https://github.com/salmon1802/UniRank/issues/11#issuecomment-5169254442).
+This focused comparison avoids the unnecessary cost and multiple-comparison burden of rerunning every candidate with many seeds.
 
 For every reproduction, use identical generated dataset files, label windows, action-token rules, chronological split boundaries, metrics, and checkpoint-selection rules. Report model size, sequence length, token dimension, batch size, precision, GPU count, and all changed configuration values together with accuracy results.
 
@@ -491,15 +364,3 @@ UniRank is built on top of, and deeply inspired by, the excellent [FuxiCTR](http
 ## License
 
 This project is released under the [Apache License 2.0](./LICENSE).
-
-## Citation
-If you find our code helpful for your research, please cite the following paper:
-
-```bibtex
-@article{li2026unirank,
-  title={{UniRank: Benchmarking Ranking Models for Unified Sequential Modeling and Feature Interaction}},
-  author={Li, Honghao and Wang, Xianquan and Zhang, Zibin and Zhang, Yi and Lin, Kangyi and Zhang, Yiwen},
-  journal={arXiv preprint arXiv:2607.19987},
-  year={2026}
-}
-```
