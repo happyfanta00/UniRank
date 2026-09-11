@@ -32,8 +32,13 @@ from unirank.utils import (
     estimate_parquet_block_cost,
     find_meta_data_json,
     get_parquet_schema_names,
+    resolve_parquet_files,
     resolve_side_info_path,
 )
+
+
+# Aligned index-for-index with `full_item_seq`; milliseconds since epoch, non-decreasing.
+TIMESTAMP_COL = "full_timestamp_seq"
 
 
 # ================================================================
@@ -303,7 +308,8 @@ class UniRankDataloader(DataLoader):
             user_info=user_info,
             item_info=item_info,
             padding=padding,
-            cache_size=self.block_cache_size
+            cache_size=self.block_cache_size,
+            use_time_gap=kwargs.get("use_time_gap", False)
         )
 
         # In blocked mode, the dataset has been split according to rank, and sampler is not used.
@@ -353,11 +359,16 @@ class BlockedBatchCollator(object):
     Only the user_info/item_info of the current block is cached each time to avoid reading the entire side-info at once.
     """
     def __init__(self, feature_map, max_len, column_index, user_info, item_info,
-                 padding="pre", cache_size=2):
+                 padding="pre", cache_size=2, use_time_gap=False):
         self.feature_map = feature_map
         self.max_len = max_len
         self.padding = padding
         self.cache_size = int(max(1, cache_size))
+        # `full_timestamp_seq` sits in user_info next to `full_item_seq` but is not read by
+        # default, so no model in the zoo can tell an ordinal slot apart in real time. When
+        # this is on, the batch grows a fifth element (per-slot age in seconds) and every
+        # other config keeps returning exactly the 4-tuple it returned before.
+        self.use_time_gap = bool(use_time_gap)
 
         self.all_cols = set(list(feature_map.features.keys()) + feature_map.labels)
         self.batch_cols = [(col, idx) for col, idx in column_index.items() if col in self.all_cols]
@@ -415,6 +426,18 @@ class BlockedBatchCollator(object):
             return value
 
         need_user_cols = ["user_index", "full_item_seq", "full_action_seq"]
+        if self.use_time_gap:
+            # schema_arrow, not get_parquet_schema_names(): the latter reads the flattened
+            # *physical* parquet schema, which reports a list column as its element name, so
+            # `full_timestamp_seq` is invisible to it.
+            if TIMESTAMP_COL not in pq.ParquetFile(
+                    resolve_parquet_files(user_info_file)[0]).schema_arrow.names:
+                raise ValueError(
+                    f"use_time_gap=True but column '{TIMESTAMP_COL}' is missing from "
+                    f"{user_info_file}. Refusing to fall back to ordinal position silently: "
+                    f"that would train or evaluate a time-gap model on no time information."
+                )
+            need_user_cols.append(TIMESTAMP_COL)
         user_df = pd.read_parquet(user_info_file, columns=need_user_cols)
         user_df = user_df.set_index("user_index").sort_index()
 
@@ -436,6 +459,7 @@ class BlockedBatchCollator(object):
 
         user_item_seqs = user_df["full_item_seq"].to_numpy()
         user_action_seqs = user_df["full_action_seq"].to_numpy()
+        user_ts_seqs = user_df[TIMESTAMP_COL].to_numpy() if self.use_time_gap else None
 
         item_schema = get_parquet_schema_names(item_info_file)
         item_cols = ["item_index"] + [col for col in self.all_cols if col not in {"action", "item_index"}]
@@ -475,6 +499,7 @@ class BlockedBatchCollator(object):
             "user_row_lookup": user_row_lookup,
             "user_item_seqs": user_item_seqs,
             "user_action_seqs": user_action_seqs,
+            "user_ts_seqs": user_ts_seqs,
             "item_index_min": item_index_min,
             "item_index_max": item_index_max,
             "item_row_lookup": item_row_lookup,
@@ -532,6 +557,17 @@ class BlockedBatchCollator(object):
 
         mask = torch.from_numpy((batch_item_seqs > 0).astype(np.float32))
 
+        time_gap = None
+        if self.use_time_gap:
+            # padding="pre", so the newest real slot is always the last column; measuring every
+            # slot's age against that column needs no timestamp for the target impression and
+            # so cannot leak anything the ranker would not have at request time.
+            batch_ts = self._fast_pad(side["user_ts_seqs"][user_row_ids], seq_lens)
+            reference = batch_ts[:, -1:]
+            gap_seconds = (reference - batch_ts).astype(np.float32) / 1000.0
+            np.clip(gap_seconds, 0.0, None, out=gap_seconds)
+            time_gap = torch.from_numpy(gap_seconds) * mask
+
         batch_action_tensor = torch.from_numpy(
             batch_action_seqs.astype(np.int64, copy=False)
         )
@@ -574,6 +610,8 @@ class BlockedBatchCollator(object):
         if "action" in self.all_cols:
             item_dict["action"] = torch.from_numpy(batch_actions)
 
+        if time_gap is not None:
+            return batch_dict, item_dict, mask, multi_masks, time_gap
         return batch_dict, item_dict, mask, multi_masks
 
     def _fast_pad(self, user_seqs, seq_lens):
