@@ -16,7 +16,7 @@
 
 Base:
     model_root: './checkpoints/'
-    num_workers: 4
+    num_workers: 8   # data-loader workers per process (4 caps the loader at ~55 batches/s per rank)
     verbose: 1
     early_stop_patience: 2
     pickle_feature_encoder: True
@@ -142,6 +142,7 @@ RankMixer_KuaiRand_Video_Action_Ablation_NumLayers_Mid:
 RankMixer_KuaiRand_Video_Action_Ablation_NumLayers_Large:
     <<: *rankmixer_kuairand_scaling_base
     num_layers: 6
+    fast_trainer: True   # model_zoo/rankmixer_fast_trainer.py instead of DDP + model.fit()
 
 # Baseline-noise probe: five runs of RankMixer_KuaiRand_Video_Action that differ in
 # nothing but `seed`. They exist to measure the run-to-run standard deviation of the

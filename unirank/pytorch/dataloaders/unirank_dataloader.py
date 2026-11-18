@@ -15,9 +15,12 @@
 # limitations under the License.
 # =========================================================================
 
+import copy
 import json
 import random
+import threading
 from collections import OrderedDict
+from concurrent.futures import Future, ThreadPoolExecutor
 
 import numpy as np
 import pandas as pd
@@ -67,8 +70,12 @@ class BlockedParquetBatchDataset(IterableDataset):
                  distributed=False,
                  rank=0,
                  world_size=1,
-                 drop_last=True):
+                 drop_last=True,
+                 prefetch_blocks=True):
         super().__init__()
+        # Load the next block of a worker in a background thread while the current one is still being
+        # consumed (see __iter__). Only the timing changes: same batches, same order.
+        self.prefetch_blocks = bool(prefetch_blocks)
         self.columns = columns
         self.batch_size = int(batch_size)
         self.shuffle = shuffle
@@ -192,6 +199,16 @@ class BlockedParquetBatchDataset(IterableDataset):
                 return column_index
         raise ValueError("Failed to infer column_index from blocked parquet files.")
 
+    # Start loading the next block when this many batches of the current one are left.
+    PREFETCH_AHEAD_BATCHES = 200
+
+    def _load_block_array(self, blk):
+        df = pd.read_parquet(blk["data_file"], columns=self.columns)
+        if len(df) == 0:
+            return None
+        file_array, _ = dataframe_to_darray(df)
+        return file_array
+
     def __iter__(self):
         worker_info = get_worker_info()
 
@@ -205,34 +222,54 @@ class BlockedParquetBatchDataset(IterableDataset):
         if worker_info is not None:
             blocks = blocks[worker_info.id::worker_info.num_workers]
 
-        for blk in blocks:
-            df = pd.read_parquet(blk["data_file"], columns=self.columns)
-            if len(df) == 0:
-                continue
+        # Without prefetching, every block switch stalls the whole loader (batches are returned in
+        # worker order) for the ~6 s it takes to read a block and its side info. With prefetching,
+        # the next block's parquet data is read in a thread here, and the collator is told (payload
+        # key "prefetch_side_info") to load its user/item side info in a thread as well. The shuffle
+        # permutations are still drawn here, block by block, so the batches are the same.
+        pool = ThreadPoolExecutor(1) if self.prefetch_blocks else None
+        next_future = None
+        try:
+            for j, blk in enumerate(blocks):
+                if next_future is not None:
+                    file_array = next_future.result()
+                    next_future = None
+                else:
+                    file_array = self._load_block_array(blk)
+                next_blk = blocks[j + 1] if j + 1 < len(blocks) else None
+                if file_array is None:
+                    continue
 
-            file_array, _ = dataframe_to_darray(df)
+                if self.shuffle and len(file_array) > 1:
+                    perm = np_rng.permutation(len(file_array))
+                    file_array = file_array[perm]
 
-            if self.shuffle and len(file_array) > 1:
-                perm = np_rng.permutation(len(file_array))
-                file_array = file_array[perm]
+                n = len(file_array)
+                n_batches = n // self.batch_size if self.drop_last else int(np.ceil(n / self.batch_size))
+                start, k = 0, 0
+                while start < n:
+                    end = min(start + self.batch_size, n)
+                    if self.drop_last and (end - start) < self.batch_size:
+                        break
 
-            n = len(file_array)
-            start = 0
-            while start < n:
-                end = min(start + self.batch_size, n)
-                if self.drop_last and (end - start) < self.batch_size:
-                    break
+                    rows = np.ascontiguousarray(file_array[start:end])
 
-                rows = np.ascontiguousarray(file_array[start:end])
-
-                yield {
-                    "rows": rows,
-                    "part_id": int(blk["part_id"]),
-                    "data_file": blk["data_file"],
-                    "user_info_file": blk["user_info_file"],
-                    "item_info_file": blk["item_info_file"],
-                }
-                start = end
+                    payload = {
+                        "rows": rows,
+                        "part_id": int(blk["part_id"]),
+                        "data_file": blk["data_file"],
+                        "user_info_file": blk["user_info_file"],
+                        "item_info_file": blk["item_info_file"],
+                    }
+                    if (pool is not None and next_blk is not None and next_future is None
+                            and n_batches - k <= self.PREFETCH_AHEAD_BATCHES):
+                        next_future = pool.submit(self._load_block_array, next_blk)
+                        payload["prefetch_side_info"] = (next_blk["user_info_file"], next_blk["item_info_file"])
+                    yield payload
+                    start, k = end, k + 1
+        finally:
+            if pool is not None:
+                pool.shutdown(wait=False)
 
 
 # ================================================================
@@ -261,6 +298,11 @@ class UniRankDataloader(DataLoader):
         self.split = split
 
         self.block_cache_size = kwargs.pop("block_cache_size", 2)
+        # prefetch_blocks: load the next block in the background (same batches, same order).
+        # build_multi_masks: build the per-task token masks; only models that read them need them
+        # (run_expid.py sets it from the model class's `uses_multi_masks`).
+        prefetch_blocks = bool(kwargs.pop("prefetch_blocks", True))
+        build_multi_masks = bool(kwargs.pop("build_multi_masks", True))
 
         user_info = resolve_side_info_path(
             split=self.split,
@@ -285,7 +327,8 @@ class UniRankDataloader(DataLoader):
             distributed=distributed,
             rank=rank,
             world_size=world_size,
-            drop_last=drop_last
+            drop_last=drop_last,
+            prefetch_blocks=prefetch_blocks
         )
         if distributed:
             print(
@@ -303,7 +346,8 @@ class UniRankDataloader(DataLoader):
             user_info=user_info,
             item_info=item_info,
             padding=padding,
-            cache_size=self.block_cache_size
+            cache_size=self.block_cache_size,
+            build_multi_masks=build_multi_masks
         )
 
         # In blocked mode, the dataset has been split according to rank, and sampler is not used.
@@ -319,7 +363,8 @@ class UniRankDataloader(DataLoader):
             pin_memory=True,
             persistent_workers=(num_workers > 0),
             prefetch_factor=4 if num_workers > 0 else None,
-            collate_fn=collate_fn
+            collate_fn=collate_fn,
+            in_order=True                      # batches in worker order: deterministic
         )
 
         self._configured_batch_size = int(batch_size)
@@ -353,11 +398,17 @@ class BlockedBatchCollator(object):
     Only the user_info/item_info of the current block is cached each time to avoid reading the entire side-info at once.
     """
     def __init__(self, feature_map, max_len, column_index, user_info, item_info,
-                 padding="pre", cache_size=2):
+                 padding="pre", cache_size=2, build_multi_masks=True):
         self.feature_map = feature_map
         self.max_len = max_len
         self.padding = padding
         self.cache_size = int(max(1, cache_size))
+        self.build_multi_masks = bool(build_multi_masks)
+        # Side info of the next block may be loaded by a background thread (prefetch hint from the
+        # dataset); the cache is shared with it.
+        self._cache_lock = threading.Lock()
+        self._pending = {}
+        self._prefetch_pool = None
 
         self.all_cols = set(list(feature_map.features.keys()) + feature_map.labels)
         self.batch_cols = [(col, idx) for col, idx in column_index.items() if col in self.all_cols]
@@ -407,7 +458,60 @@ class BlockedBatchCollator(object):
 
         return torch.from_numpy(action_task_table)
 
+    def __getstate__(self):
+        state = self.__dict__.copy()                  # locks / thread pools cannot be pickled
+        state["_cache_lock"], state["_pending"], state["_prefetch_pool"] = None, {}, None
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._cache_lock = threading.Lock()
+
     def _load_block_side_info(self, user_info_file, item_info_file):
+        """Side info of a block: from the cache, from a running prefetch, or loaded now."""
+        key = (str(user_info_file), str(item_info_file))
+        with self._cache_lock:
+            if key in self.side_cache:
+                self.side_cache.move_to_end(key)
+                return self.side_cache[key]
+            future = self._pending.get(key)
+        if future is not None:
+            return future.result()
+        return self._load_and_cache(user_info_file, item_info_file)
+
+    def _load_and_cache(self, user_info_file, item_info_file):
+        key = (str(user_info_file), str(item_info_file))
+        reader = copy.copy(self)                      # private cache: safe in a background thread
+        reader.side_cache = OrderedDict()
+        value = reader._read_side_info(user_info_file, item_info_file)
+        with self._cache_lock:
+            self.side_cache[key] = value
+            self.side_cache.move_to_end(key)
+            while len(self.side_cache) > self.cache_size:
+                self.side_cache.popitem(last=False)
+            self._pending.pop(key, None)
+        return value
+
+    def _prefetch_side_info(self, user_info_file, item_info_file):
+        key = (str(user_info_file), str(item_info_file))
+        with self._cache_lock:
+            if key in self.side_cache or key in self._pending:
+                return
+            if self._prefetch_pool is None:
+                self._prefetch_pool = ThreadPoolExecutor(1)
+            future = Future()
+            self._pending[key] = future
+
+        def run():
+            try:
+                future.set_result(self._load_and_cache(user_info_file, item_info_file))
+            except BaseException as e:                # re-raised by the batch that needs this block
+                with self._cache_lock:
+                    self._pending.pop(key, None)
+                future.set_exception(e)
+        self._prefetch_pool.submit(run)
+
+    def _read_side_info(self, user_info_file, item_info_file):
         cache_key = (str(user_info_file), str(item_info_file))
         if cache_key in self.side_cache:
             value = self.side_cache.pop(cache_key)
@@ -494,6 +598,10 @@ class BlockedBatchCollator(object):
                 f"but got type={type(payload)}"
             )
 
+        hint = payload.get("prefetch_side_info")
+        if hint is not None:
+            self._prefetch_side_info(*hint)
+
         rows = payload["rows"]
         user_info_file = payload["user_info_file"]
         item_info_file = payload["item_info_file"]
@@ -532,13 +640,18 @@ class BlockedBatchCollator(object):
 
         mask = torch.from_numpy((batch_item_seqs > 0).astype(np.float32))
 
-        batch_action_tensor = torch.from_numpy(
-            batch_action_seqs.astype(np.int64, copy=False)
-        )
+        if self.build_multi_masks:
+            batch_action_tensor = torch.from_numpy(
+                batch_action_seqs.astype(np.int64, copy=False)
+            )
 
-        token_task_mask = self.action_task_table[batch_action_tensor]
-        token_task_mask = token_task_mask * mask.unsqueeze(-1)
-        multi_masks = [token_task_mask[:, :, t] for t in range(token_task_mask.shape[-1])]
+            token_task_mask = self.action_task_table[batch_action_tensor]
+            token_task_mask = token_task_mask * mask.unsqueeze(-1)
+            multi_masks = [token_task_mask[:, :, t] for t in range(token_task_mask.shape[-1])]
+        else:
+            # Not read by the model (6 x [B, L] float32 per batch, most of the cost of moving a
+            # batch through the loader); BaseModel.get_inputs() treats None as "use the mask".
+            multi_masks = None
 
         batch_size = len(user_row_ids)
         seq_total_len = batch_item_seqs.shape[1] + 1

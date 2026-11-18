@@ -40,6 +40,10 @@ except Exception:
     Join = None
 
 class BaseModel(nn.Module):
+    # Whether forward() reads the per-task token masks (multi_masks) of the data loader; the loader
+    # skips building them otherwise (run_expid.py passes this as `build_multi_masks`).
+    uses_multi_masks = False
+
     def __init__(self,
                  feature_map,
                  model_id="BaseModel",

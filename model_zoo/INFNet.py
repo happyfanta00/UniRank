@@ -23,6 +23,8 @@ from unirank.pytorch.layers.tokenization import AutoSplitTokenizer, FieldWiseTok
 
 
 class INFNet(MultiTaskModel):
+    uses_multi_masks = True    # get_inputs(..., return_multi_masks=True) in forward()
+
     def __init__(self,
                  feature_map,
                  model_id="INFNet",

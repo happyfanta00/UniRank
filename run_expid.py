@@ -163,23 +163,50 @@ if __name__ == '__main__':
             logging.info("Feature specs: " + print_to_json(feature_map.features))
 
         model_class = getattr(model_zoo, params['model'])
-        model = model_class(feature_map, **params)
-        model.model_to_device()
-        if distributed:
-            model.set_eval_process_group(eval_process_group)
+        # The data loader builds the per-task token masks only for models that read them.
+        params['build_multi_masks'] = bool(getattr(model_class, 'uses_multi_masks', False))
 
-        if distributed:
-            ddp_model = DDP(
-                model,
-                device_ids=[local_rank],
-                output_device=local_rank,
-                find_unused_parameters=params.get("find_unused_parameters", True)
-            )
-            # Rely on the rank_model.py you modified earlier
-            model.set_ddp_model(ddp_model)
+        fast_trainer = None
+        if params.get('fast_trainer', False):
+            # Optimized trainer (model_zoo/rankmixer_fast_trainer.py): same training algorithm,
+            # replaces DDP + model.fit(); needs a process group even on one GPU.
+            from types import SimpleNamespace
+            from model_zoo.rankmixer_fast_trainer import build_fast_trainer
+            if params['model'] != 'RankMixer':
+                raise ValueError("fast_trainer is only implemented for RankMixer")
+            if not dist.is_initialized():
+                import socket
+                with socket.socket() as sock:
+                    sock.bind(("127.0.0.1", 0))
+                    free_port = sock.getsockname()[1]
+                torch.cuda.set_device(0)
+                dist.init_process_group(backend="nccl", init_method=f"tcp://127.0.0.1:{free_port}",
+                                        rank=0, world_size=1)
+            fast_trainer = build_fast_trainer(SimpleNamespace(
+                rank=rank, world_size=world_size, local_rank=local_rank,
+                device=torch.device("cuda", local_rank if distributed else 0),
+                feature_map=feature_map, params=dict(params), cpu_group=eval_process_group))
+            model = fast_trainer.model
+            if distributed:
+                model.set_eval_process_group(eval_process_group)
+        else:
+            model = model_class(feature_map, **params)
+            model.model_to_device()
+            if distributed:
+                model.set_eval_process_group(eval_process_group)
 
-        if is_main_process(rank):
-            model.count_parameters()
+            if distributed:
+                ddp_model = DDP(
+                    model,
+                    device_ids=[local_rank],
+                    output_device=local_rank,
+                    find_unused_parameters=params.get("find_unused_parameters", True)
+                )
+                # Rely on the rank_model.py you modified earlier
+                model.set_ddp_model(ddp_model)
+
+        if is_main_process(rank) and fast_trainer is None:
+            model.count_parameters()          # (the fast trainer prints it while building)
 
         # --------------------
         # Build data iterators
@@ -200,7 +227,11 @@ if __name__ == '__main__':
 
         if distributed and dist.is_initialized():
             distributed_barrier(local_rank)
-        model.fit(train_gen, validation_data=valid_gen, **params)
+        if fast_trainer is not None:
+            from model_zoo.rankmixer_fast_trainer import fit as fast_fit
+            fast_fit(fast_trainer, train_gen, valid_gen, params, cpu_group=eval_process_group)
+        else:
+            model.fit(train_gen, validation_data=valid_gen, **params)
 
         del train_gen, valid_gen
         gc.collect()
@@ -250,7 +281,8 @@ if __name__ == '__main__':
                 distributed_barrier(local_rank)
 
     finally:
-        if distributed and dist.is_available() and dist.is_initialized():
+        # (also the 1-rank group the fast trainer creates for single-GPU runs)
+        if dist.is_available() and dist.is_initialized():
             try:
                 dist.destroy_process_group()
             except Exception:
